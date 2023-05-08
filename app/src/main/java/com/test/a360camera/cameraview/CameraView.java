@@ -3,6 +3,7 @@ package com.test.a360camera.cameraview;
 import android.app.Activity;
 import android.content.Context;
 import android.content.res.TypedArray;
+import android.hardware.Camera;
 import android.os.Build;
 import android.os.Parcel;
 import android.os.Parcelable;
@@ -90,6 +91,7 @@ public class CameraView extends FrameLayout {
         } else {
             mImpl = new Camera2Api23(mCallbacks, preview, context);
         }
+
         // Attributes
         TypedArray a = context.obtainStyledAttributes(attrs, R.styleable.CameraView, defStyleAttr,
                 R.style.Widget_CameraView);
@@ -345,6 +347,39 @@ public class CameraView extends FrameLayout {
         return mImpl.getAspectRatio();
     }
 
+    public Object[] getPictureSizes()
+    {
+        if (Build.VERSION.SDK_INT < 21) {
+            return ((Camera1) mImpl).getPictureSizes();
+        } else if (Build.VERSION.SDK_INT < 23) {
+            return ((Camera2)mImpl).getPictureSizes();
+        } else {
+            return ((Camera2Api23)mImpl).getPictureSizes();
+        }
+    }
+
+    public android.util.Size getCurrentPictureSize() {
+        if (Build.VERSION.SDK_INT < 21) {
+            return ((Camera1) mImpl).getCurrentPictureSize();
+        } else if (Build.VERSION.SDK_INT < 23) {
+            return ((Camera2)mImpl).getCurrentPictureSize();
+        } else {
+            return ((Camera2Api23)mImpl).getCurrentPictureSize();
+        }
+    }
+
+    public void setPictureSize(Size size) {
+        if (Build.VERSION.SDK_INT < 21) {
+            ((Camera1) mImpl).setPictureSize(size);
+        } else if (Build.VERSION.SDK_INT < 23) {
+            ((Camera2) mImpl).setPictureSize(size);
+        } else {
+            ((Camera2Api23) mImpl).setPictureSize(size);
+        }
+
+//        requestLayout();
+    }
+
     /**
      * Enables or disables the continuous auto-focus mode. When the current camera doesn't support
      * auto-focus, calling this method will be ignored.
@@ -529,4 +564,38 @@ public class CameraView extends FrameLayout {
         }
     }
 
+    public double getCameraFOV() {
+        if (Build.VERSION.SDK_INT < 21) {
+            return ((Camera1) this.mImpl).getCameraFOV();
+        } else if (Build.VERSION.SDK_INT < 23) {
+            return ((Camera2) this.mImpl).getCameraFOV();
+        } else {
+            return ((Camera2Api23) this.mImpl).getCameraFOV();
+        }
+    }
+
+    public void setAutoFocusCallback(Camera.AutoFocusCallback autoFocusCallback) {
+        Camera1 camera1 = (Camera1) this.mImpl;
+        camera1.setAutoFocusCallback(autoFocusCallback);
+    }
+
+    public Pose getPose() {
+        if (Build.VERSION.SDK_INT < 21) {
+            return ((Camera1) this.mImpl).getPose();
+        } else if (Build.VERSION.SDK_INT < 23) {
+            return ((Camera2) this.mImpl).getPose();
+        } else {
+            return ((Camera2Api23) this.mImpl).getPose();
+        }
+    }
+
+    public void setPoseListener(Camera1.Listener listener) {
+        if (this.mImpl != null) {
+            if (Build.VERSION.SDK_INT < 21) {
+                ((Camera1) this.mImpl).setPoseListener(listener);
+            } else if (Build.VERSION.SDK_INT < 23) {
+            } else {
+            }
+        }
+    }
 }

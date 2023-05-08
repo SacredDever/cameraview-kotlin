@@ -16,9 +16,13 @@
 
 package com.test.a360camera.cameraview;
 
+import static android.hardware.camera2.CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE;
+import static java.lang.Math.atan;
+
 import android.annotation.TargetApi;
 import android.content.Context;
 import android.graphics.ImageFormat;
+import android.hardware.Camera;
 import android.hardware.camera2.CameraAccessException;
 import android.hardware.camera2.CameraCaptureSession;
 import android.hardware.camera2.CameraCharacteristics;
@@ -30,11 +34,15 @@ import android.hardware.camera2.TotalCaptureResult;
 import android.hardware.camera2.params.StreamConfigurationMap;
 import android.media.Image;
 import android.media.ImageReader;
+import android.os.Build;
 import android.util.Log;
+import android.util.SizeF;
 import android.util.SparseIntArray;
 import android.view.Surface;
+import android.widget.Toast;
 
 import androidx.annotation.NonNull;
+import androidx.annotation.RequiresApi;
 
 import java.nio.ByteBuffer;
 import java.util.Arrays;
@@ -65,6 +73,8 @@ class Camera2 extends CameraViewImpl {
     private static final int MAX_PREVIEW_HEIGHT = 1080;
 
     private final CameraManager mCameraManager;
+
+    private Pose mPose = new Pose(0, 0, 0, 0, 0);
 
     private final CameraDevice.StateCallback mCameraDeviceCallback
             = new CameraDevice.StateCallback() {
@@ -106,8 +116,13 @@ class Camera2 extends CameraViewImpl {
             updateAutoFocus();
             updateFlash();
             try {
+                CaptureRequest.Builder builder = mCamera.createCaptureRequest(CameraDevice.TEMPLATE_PREVIEW);
+                builder.set(CaptureRequest.CONTROL_AF_MODE, CaptureRequest.CONTROL_AF_MODE_CONTINUOUS_PICTURE);
+
+//                mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(),
+//                        mCaptureCallback, null);
                 mCaptureSession.setRepeatingRequest(mPreviewRequestBuilder.build(),
-                        mCaptureCallback, null);
+                        captureCallback, null);
             } catch (CameraAccessException e) {
                 Log.e(TAG, "Failed to start camera preview because it couldn't access camera", e);
             } catch (IllegalStateException e) {
@@ -483,6 +498,8 @@ class Camera2 extends CameraViewImpl {
             mPreviewRequestBuilder.addTarget(surface);
             mCamera.createCaptureSession(Arrays.asList(surface, mImageReader.getSurface()),
                     mSessionCallback, null);
+//            mCamera.createCaptureSession(Arrays.asList(surface, mImageReader.getSurface()),
+//                    captureCallback, null);
         } catch (CameraAccessException e) {
             throw new RuntimeException("Failed to start camera session");
         }
@@ -520,12 +537,14 @@ class Camera2 extends CameraViewImpl {
      * Updates the internal state of auto-focus to {@link #mAutoFocus}.
      */
     void updateAutoFocus() {
+        mAutoFocus = true;
         if (mAutoFocus) {
             int[] modes = mCameraCharacteristics.get(
                     CameraCharacteristics.CONTROL_AF_AVAILABLE_MODES);
             // Auto focus is not supported
             if (modes == null || modes.length == 0 ||
                     (modes.length == 1 && modes[0] == CameraCharacteristics.CONTROL_AF_MODE_OFF)) {
+                Toast.makeText(getView().getContext(), "This device does not support auto focus.", Toast.LENGTH_SHORT).show();
                 mAutoFocus = false;
                 mPreviewRequestBuilder.set(CaptureRequest.CONTROL_AF_MODE,
                         CaptureRequest.CONTROL_AF_MODE_OFF);
@@ -641,8 +660,8 @@ class Camera2 extends CameraViewImpl {
                     new CameraCaptureSession.CaptureCallback() {
                         @Override
                         public void onCaptureCompleted(@NonNull CameraCaptureSession session,
-                                @NonNull CaptureRequest request,
-                                @NonNull TotalCaptureResult result) {
+                                                       @NonNull CaptureRequest request,
+                                                       @NonNull TotalCaptureResult result) {
                             unlockFocus();
                         }
                     }, null);
@@ -696,13 +715,13 @@ class Camera2 extends CameraViewImpl {
 
         @Override
         public void onCaptureProgressed(@NonNull CameraCaptureSession session,
-                @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
+                                        @NonNull CaptureRequest request, @NonNull CaptureResult partialResult) {
             process(partialResult);
         }
 
         @Override
         public void onCaptureCompleted(@NonNull CameraCaptureSession session,
-                @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
+                                       @NonNull CaptureRequest request, @NonNull TotalCaptureResult result) {
             process(result);
         }
 
@@ -758,4 +777,113 @@ class Camera2 extends CameraViewImpl {
 
     }
 
+    public double getCameraFOV() {
+        double fovDegrees = 0;
+        if (mCameraCharacteristics != null) {
+            SizeF sensorSize = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
+
+// Get the focal length
+            float[] focalLengths = mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+            float focalLength = focalLengths[0]; // Use the first focal length for simplicity
+
+// Get the lens aperture
+            float[] apertures = mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_APERTURES);
+            float aperture = apertures[0]; // Use the first aperture for simplicity
+
+// Calculate the FOV
+            double sensorDiagonal = Math.sqrt((sensorSize.getWidth() * sensorSize.getWidth()) + (sensorSize.getHeight() * sensorSize.getHeight()));
+            double fov = 2 * Math.atan(sensorDiagonal / (2 * focalLength));
+            fovDegrees = fov * (180 / Math.PI);
+
+// Print the FOV
+            Log.e(TAG, "FOV: " + fovDegrees + " degrees");
+
+//            SizeF sensorSize = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
+//            float[] focalLengths = mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+//
+//            Log.e(TAG, "Fov > sensorSize: " + sensorSize.getWidth() + ", !: " + sensorSize.getHeight());
+//            Log.e(TAG, "Fov > focalLengths: " + focalLengths);
+//
+//            if (focalLengths != null && focalLengths.length > 0) {
+//                fov[0] =  (float) (2.0f * atan(sensorSize.getWidth() / (2.0f * focalLengths[0])));
+//            } else {
+//                fov[0] =  1.1f;
+//            }
+//
+//            SizeF sensorVSize = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_INFO_PHYSICAL_SIZE);
+//            float[] focalVLengths = mCameraCharacteristics.get(CameraCharacteristics.LENS_INFO_AVAILABLE_FOCAL_LENGTHS);
+//
+//            if (focalVLengths != null && focalVLengths.length > 0) {
+//                fov[1] =  (float) (2.0f * atan(sensorVSize.getHeight() / (2.0f * focalVLengths[0])));
+//            } else {
+//                fov[1] =  1.1f;
+//            }
+        }
+
+        return fovDegrees;
+    }
+
+    public Object[] getPictureSizes() {
+        Object[] sizes = mPictureSizes.sizes(mAspectRatio).toArray();
+        return sizes;
+    }
+
+    public void setPictureSize(Size size) {
+        mImageReader = ImageReader.newInstance(size.getWidth(), size.getHeight(),
+                ImageFormat.JPEG, /* maxImages */ 2);
+        mImageReader.setOnImageAvailableListener(mOnImageAvailableListener, null);
+        startCaptureSession();
+    }
+
+    public android.util.Size getCurrentPictureSize() {
+        return new android.util.Size(mImageReader.getWidth(), mImageReader.getHeight());
+    }
+
+    public Pose getPose() {
+        Integer orientation = mCameraCharacteristics.get(CameraCharacteristics.SENSOR_ORIENTATION);
+        mPose.setCamOrient(orientation);
+        Log.e(TAG, "Orientation: " + orientation);
+        Log.e(TAG, "SDK_VERSION: " + android.os.Build.VERSION.SDK);
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            float[] rotations = mCameraCharacteristics.get(CameraCharacteristics.LENS_POSE_ROTATION);
+            Log.e(TAG, "Rotations: " + rotations);
+
+            float[] transactions = mCameraCharacteristics.get(CameraCharacteristics.LENS_POSE_TRANSLATION);
+            Log.e(TAG, "Transactions: " + transactions);
+
+
+            float[] radialDistorations = mCameraCharacteristics.get(CameraCharacteristics.LENS_RADIAL_DISTORTION);
+            Log.e(TAG, "DISTORATION: " + radialDistorations);
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.P) {
+            Integer posRef = mCameraCharacteristics.get(CameraCharacteristics.LENS_POSE_REFERENCE);
+            Log.e(TAG, "LENS_POSE_REFERENCE: " + posRef);
+        }
+
+        if (android.os.Build.VERSION.SDK_INT >= 33) {
+            Integer autoLoc = mCameraCharacteristics.get(CameraCharacteristics.AUTOMOTIVE_LOCATION);
+            Log.e(TAG, "AUTOMOTIVE_LOCATION: " + autoLoc);
+        }
+        return mPose;
+
+    }
+
+    // Create a CaptureCallback object
+    CameraCaptureSession.CaptureCallback captureCallback = new CameraCaptureSession.CaptureCallback() {
+        @Override
+        public void onCaptureCompleted(CameraCaptureSession session, CaptureRequest request, TotalCaptureResult result) {
+//            Log.e(TAG, "captureCallBack/onCaptureCompleted");
+            // Check if the auto focus is complete
+            Integer afState = result.get(CaptureResult.CONTROL_AF_STATE);
+            if (afState == null) {
+                captureStillPicture();
+            } else if (afState == CaptureResult.CONTROL_AF_STATE_FOCUSED_LOCKED || afState == CaptureResult.CONTROL_AF_STATE_NOT_FOCUSED_LOCKED) {
+                float focusDistance = result.get(CaptureResult.LENS_FOCUS_DISTANCE);
+//                Log.e(TAG, "Auto focus complete, focus distance: " + focusDistance);
+                captureStillPicture();
+            }
+        }
+    };
 }

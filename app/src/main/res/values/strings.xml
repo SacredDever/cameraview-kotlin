@@ -10,4 +10,7 @@
     <string name="flash_auto">Flash auto</string>
     <string name="flash_off">Flash off</string>
     <string name="flash_on">Flash on</string>
+    <string name="fov_camera">FOV</string>
+    <string name="pic_dimension">Picture Dimension</string>
+    <string name="camera_pose">Camera Pose</string>
 </resources>

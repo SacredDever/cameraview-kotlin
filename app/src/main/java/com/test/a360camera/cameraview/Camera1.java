@@ -19,9 +19,13 @@ package com.test.a360camera.cameraview;
 import android.annotation.SuppressLint;
 import android.graphics.SurfaceTexture;
 import android.hardware.Camera;
+import android.util.Log;
 import android.view.SurfaceHolder;
 
+import androidx.annotation.NonNull;
 import androidx.collection.SparseArrayCompat;
+
+import com.test.a360camera.PictureDimenFragment;
 
 import java.io.IOException;
 import java.util.List;
@@ -31,11 +35,20 @@ import java.util.concurrent.atomic.AtomicBoolean;
 
 
 @SuppressWarnings("deprecation")
+public
 class Camera1 extends CameraViewImpl {
 
+    private static final String TAG = "Camera1";
     private static final int INVALID_CAMERA_ID = -1;
 
     private static final SparseArrayCompat<String> FLASH_MODES = new SparseArrayCompat<>();
+
+    public interface Listener {
+        void onPoseChanged(Pose pose);
+    }
+    private Listener mListener;
+
+    private Pose mPose = new Pose(0, 0, 0, 0, 0);
 
     static {
         FLASH_MODES.put(Constants.FLASH_OFF, Camera.Parameters.FLASH_MODE_OFF);
@@ -49,7 +62,7 @@ class Camera1 extends CameraViewImpl {
 
     private final AtomicBoolean isPictureCaptureInProgress = new AtomicBoolean(false);
 
-    Camera mCamera;
+    private Camera mCamera;
 
     private Camera.Parameters mCameraParameters;
 
@@ -92,6 +105,27 @@ class Camera1 extends CameraViewImpl {
             setUpPreview();
         }
         mShowingPreview = true;
+        mCamera.setPreviewCallback(new Camera.PreviewCallback() {
+            @Override
+            public void onPreviewFrame(byte[] data, Camera camera) {
+                // Get the camera's pose from the preview frame's metadata
+                if (mListener != null) {
+                    Camera.Parameters parameters = camera.getParameters();
+                    Camera.Size previewSize = parameters.getPreviewSize();
+                    Camera.CameraInfo cameraInfo = new Camera.CameraInfo();
+                    Camera.getCameraInfo(Camera.CameraInfo.CAMERA_FACING_BACK, cameraInfo);
+                    Camera.Size pictureSize = parameters.getPictureSize();
+
+                    mPose.setPreWidth(previewSize.width);
+                    mPose.setPreHeight(previewSize.height);
+                    mPose.setPicWidth(pictureSize.width);
+                    mPose.setPicHeight(pictureSize.height);
+                    mPose.setCamOrient(cameraInfo.orientation);
+
+                    mListener.onPoseChanged(mPose);
+                }
+            }
+        });
         mCamera.startPreview();
         return true;
     }
@@ -260,6 +294,7 @@ class Camera1 extends CameraViewImpl {
      * This rewrites {@link #mCameraId} and {@link #mCameraInfo}.
      */
     private void chooseCamera() {
+        Log.e(TAG, "CameraCnt: " + Camera.getNumberOfCameras());
         for (int i = 0, count = Camera.getNumberOfCameras(); i < count; i++) {
             Camera.getCameraInfo(i, mCameraInfo);
             if (mCameraInfo.facing == mFacing) {
@@ -369,9 +404,9 @@ class Camera1 extends CameraViewImpl {
     /**
      * Calculate display orientation
      * https://developer.android.com/reference/android/hardware/Camera.html#setDisplayOrientation(int)
-     *
+     * <p>
      * This calculation is used for orienting the preview
-     *
+     * <p>
      * Note: This is not the same calculation as the camera rotation
      *
      * @param screenOrientationDegrees Screen orientation in degrees
@@ -387,10 +422,10 @@ class Camera1 extends CameraViewImpl {
 
     /**
      * Calculate camera rotation
-     *
+     * <p>
      * This calculation is applied to the output JPEG either via Exif Orientation tag
      * or by actually transforming the bitmap. (Determined by vendor camera API implementation)
-     *
+     * <p>
      * Note: This is not the same calculation as the display orientation
      *
      * @param screenOrientationDegrees Screen orientation in degrees
@@ -463,4 +498,47 @@ class Camera1 extends CameraViewImpl {
         }
     }
 
+    public double getCameraFOV() {
+        double fovDegrees = 0;
+
+        if (this.mCamera != null) {
+            Camera.Parameters parameters = this.mCamera.getParameters();
+
+            float horizontalAngle = parameters.getHorizontalViewAngle();
+            float verticalAngle = parameters.getVerticalViewAngle();
+
+            double fov = 2 * Math.atan(Math.tan(horizontalAngle / 2) + Math.tan(verticalAngle / 2));
+            fovDegrees = fov * (180 / Math.PI);
+
+            Log.e(TAG, "FOV: " + fovDegrees + " degrees");
+        }
+
+        return fovDegrees;
+    }
+
+    public void setAutoFocusCallback(Camera.AutoFocusCallback autoFocusCallback) {
+        mCamera.autoFocus(autoFocusCallback);
+    }
+
+    public Object[] getPictureSizes() {
+        Object[] sizes = mPictureSizes.sizes(mAspectRatio).toArray();
+        return sizes;
+    }
+
+    public void setPictureSize(Size size) {
+        mCameraParameters.setPictureSize(size.getWidth(), size.getHeight());
+        mCamera.setParameters(mCameraParameters);
+    }
+
+    public android.util.Size getCurrentPictureSize() {
+        return new android.util.Size(mCameraParameters.getPictureSize().width, mCameraParameters.getPictureSize().height);
+    }
+
+    public Pose getPose() {
+        return mPose;
+    }
+
+    public void setPoseListener(Listener listener) {
+        mListener = listener;
+    }
 }
